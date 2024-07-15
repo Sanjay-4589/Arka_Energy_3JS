@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>3D Polygon Creator</title>
+ <style>
+ body {
+     font-family: Arial, sans-serif;
+     margin: 0;
+     overflow: hidden;
+ }
+ #buttons {
+     position: absolute;
+     bottom: 0;
+     left: 50%;
+     transform: translateX(-50%);
+     background-color: #fff;
+     padding: 10px;
+     border: 1px solid #ddd;
+     box-shadow: 0px 0px 10px rgba(0,0,0,0.2);
+ }
+ #buttons button {
+     margin-right: 10px;
+ }
+ #canvas {
+     display: block;
+     width: 100vw;
+     height: 100vh;
+ }
+ </style>
+</head>
+<body>
+ <div id="buttons">
+     <button id="complete-button">Complete Polygon</button>
+     <button id="copy-button">Copy Polygon</button>
+     <button id="reset-button">Reset</button>
+ </div>
+ <canvas id="canvas"></canvas>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+ <script>
+ // GroundPlane class
+ class GroundPlane {
+     constructor(scene) {
+         const size = 100;
+         const divisions = 10; // Increase grid spacing
+         const gridHelper = new THREE.GridHelper(size, divisions);
+         gridHelper.rotation.x = Math.PI / 2; // Rotate to be horizontal
+         scene.add(gridHelper);
+     }
+ }
+ 
+ // Polygon class
+ class Polygon {
+     constructor(scene, color) {
+         this.scene = scene;
+         this.vertices = [];
+         this.color = color;
+         this.polygon = null;
+         this.edgeLines = null;
+     }
+     addVertex(x, y) {
+         this.vertices.push(new THREE.Vector3(x, y, 0));
+         this.drawVertex(x, y);
+     }
+     drawVertex(x, y) {
+         const vertexGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+         const vertexMaterial = new THREE.MeshBasicMaterial({ color: this.color });
+         const vertex = new THREE.Mesh(vertexGeometry, vertexMaterial);
+         vertex.position.set(x, y, 0);
+         this.scene.add(vertex);
+     }
+     completePolygon() {
+         if (this.vertices.length < 3) return; // Ensure at least 3 vertices
+         const shape = new THREE.Shape(this.vertices);
+         const geometry = new THREE.ShapeGeometry(shape);
+         this.polygon = new THREE.Mesh(
+             geometry,
+             new THREE.MeshBasicMaterial({ color: this.color })
+         );
+         const edges = new THREE.EdgesGeometry(geometry);
+         this.edgeLines = new THREE.LineSegments(
+             edges,
+             new THREE.LineBasicMaterial({ color: 0x000000 })
+         );
+         this.scene.add(this.polygon);
+         this.scene.add(this.edgeLines);
+     }
+     copy() {
+         const copiedPolygon = new Polygon(this.scene, this.color);
+         copiedPolygon.vertices = [...this.vertices];
+         copiedPolygon.completePolygon();
+         return copiedPolygon;
+     }
+     move(x, y) {
+         if (this.polygon && this.edgeLines) {
+             const dx = x - this.vertices[0].x;
+             const dy = y - this.vertices[0].y;
+             this.vertices.forEach(vertex => {
+                 vertex.x += dx;
+                 vertex.y += dy;
+             });
+             this.polygon.position.set(dx, dy, 0);
+             this.edgeLines.position.set(dx, dy, 0);
+         }
+     }
+ }
+ 
+ // PolygonManager class
+ class PolygonManager {
+     constructor(scene) {
+         this.scene = scene;
+         this.polygons = [];
+         this.currentPolygon = null;
+         this.copiedPolygon = null;
+     }
+     createPolygon(color) {
+         this.currentPolygon = new Polygon(this.scene, color);
+         this.polygons.push(this.currentPolygon);
+         return this.currentPolygon;
+     }
+     completeCurrentPolygon() {
+         if (this.currentPolygon) {
+             this.currentPolygon.completePolygon();
+             this.currentPolygon = null;
+         }
+     }
+     copyPolygon() {
+         if (this.polygons.length > 0) {
+             const lastPolygon = this.polygons[this.polygons.length - 1];
+             this.copiedPolygon = lastPolygon.copy();
+             this.scene.add(this.copiedPolygon.polygon);
+             this.scene.add(this.copiedPolygon.edgeLines);
+         }
+     }
+     moveCopiedPolygon(x, y) {
+         if (this.copiedPolygon) {
+             this.copiedPolygon.move(x, y);
+         }
+     }
+     placeCopiedPolygon() {
+         if (this.copiedPolygon) {
+             this.copiedPolygon = null;
+         }
+     }
+     reset() {
+         this.polygons.forEach((polygon) => {
+             this.scene.remove(polygon.polygon);
+             this.scene.remove(polygon.edgeLines);
+         });
+         this.polygons = [];
+     }
+ }
+ 
+ // UI class
+ class UI {
+     constructor() {
+         this.completeButton = document.getElementById("complete-button");
+         this.copyButton = document.getElementById("copy-button");
+         this.resetButton = document.getElementById("reset-button");
+     }
+     addEventListeners(polygonManager) {
+         this.completeButton.addEventListener("click", () => {
+             polygonManager.completeCurrentPolygon();
+         });
+         this.copyButton.addEventListener("click", () => {
+             polygonManager.copyPolygon();
+         });
+         this.resetButton.addEventListener("click", () => {
+             polygonManager.reset();
+         });
+     }
+ }
+ 
+ // Main class
+ class Main {
+     constructor() {
+         this.scene = new THREE.Scene();
+         this.camera = new THREE.PerspectiveCamera(
+             75,
+             window.innerWidth / window.innerHeight,
+             0.1,
+             1000
+         );
+         this.camera.position.set(0, 50, 100);
+         this.camera.lookAt(0, 0, 0);
+         this.renderer = new THREE.WebGLRenderer({
+             canvas: document.getElementById("canvas"),
+         });
+         this.renderer.setClearColor(0xffffff, 1);
+         this.renderer.setSize(window.innerWidth, window.innerHeight);
+         this.groundPlane = new GroundPlane(this.scene);
+         this.polygonManager = new PolygonManager(this.scene);
+         this.ui = new UI();
+         this.ui.addEventListeners(this.polygonManager);
+         this.addMouseEventListeners();
+     }
+     addMouseEventListeners() {
+         this.renderer.domElement.addEventListener("click", (event) => {
+             const rect = this.renderer.domElement.getBoundingClientRect();
+             const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+             const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+             const vector = new THREE.Vector3(x, y, 0.5).unproject(this.camera);
+             const dir = vector.sub(this.camera.position).normalize();
+             const distance = -this.camera.position.z / dir.z;
+             const pos = this.camera.position.clone().add(dir.multiplyScalar(distance));
+             if (!this.polygonManager.currentPolygon) {
+                 this.polygonManager.createPolygon(0xff0000);
+             }
+             this.polygonManager.currentPolygon.addVertex(pos.x, pos.y);
+             if (this.polygonManager.copiedPolygon) {
+                 this.polygonManager.placeCopiedPolygon();
+             }
+         });
+         this.renderer.domElement.addEventListener("mousemove", (event) => {
+             const rect = this.renderer.domElement.getBoundingClientRect();
+             const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+             const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+             const vector = new THREE.Vector3(x, y, 0.5).unproject(this.camera);
+             const dir = vector.sub(this.camera.position).normalize();
+             const distance = -this.camera.position.z / dir.z;
+             const pos = this.camera.position.clone().add(dir.multiplyScalar(distance));
+             if (this.polygonManager.copiedPolygon) {
+                 this.polygonManager.moveCopiedPolygon(pos.x, pos.y);
+             }
+         });
+     }
+     animate() {
+         requestAnimationFrame(() => {
+             this.renderer.render(this.scene, this.camera);
+             this.animate();
+         });
+     }
+ }
+ 
+ // Initialize
+ const main = new Main();
+ main.animate();
+ </script>
+</body>
+</html>
